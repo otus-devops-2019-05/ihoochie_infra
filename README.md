@@ -80,6 +80,7 @@ $ git push --set-upstream origin play-travis
 bastion_IP = 35.210.60.203
 someinternalhost_IP = 10.132.0.4
 ```
+
 ###### Подготовка
 * Создаем новую учетную запись в Google Cloud Platform
 * Создаем новый проект Infra
