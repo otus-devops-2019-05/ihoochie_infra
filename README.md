@@ -1,6 +1,6 @@
-# ihoochie_infra
+# ihoochie_infra [![Build Status](https://travis-ci.com/otus-devops-2019-05/ihoochie_infra.svg?branch=master)](https://travis-ci.com/otus-devops-2019-05/ihoochie_infra)
 
-[ДЗ№2: Локальное окружение инженера. ChatOps и визуализация рабочих процессов. Командная работа с Git. Работа в GitHub](#дз-2-локальное-окружение-инженера-chatops-и-визуализация-рабочих-процессов-командная-работа-с-git-работа-в-github)
+[ДЗ №2: Локальное окружение инженера. ChatOps и визуализация рабочих процессов. Командная работа с Git. Работа в GitHub](#дз-2-локальное-окружение-инженера-chatops-и-визуализация-рабочих-процессов-командная-работа-с-git-работа-в-github)
 * [Создание ветки репозитория](#создание-ветки-репозитория)
 * [обавление шаблона PR](#добавление-шаблона-pr)
 * [Интеграция GitHub и Slack](#интеграция-github-и-slack)
@@ -15,6 +15,16 @@
 * [Создание VPN сервера при помощи Pritunl](#создание-vpn-сервера-при-помощи-pritunl)
 * [Добавление валидного сертификата, полученного в Let's encrypt](#добавление-валидного-сертификата-полученного-в-lets-encrypt)
 
+[ДЗ №4: Основные сервисы Google Cloud Platform (GCP)](дз-4-основные-сервисы-google-cloud-platform-gcp)
+* [Адреса для подключения2](#адреса-для-подключения2)  
+* [Установка и настройка gcloud](#установка-и-настройка-gcloud)  
+* [Создание инстанса (gcloud)](#создание-инстанса-gcloud)  
+* [Подключение к инстансу и обновление ruby](#подключение-к-инстансу-и-обновление-ruby)  
+* [Установка и запуск mongodb](#установка-и-запуск-mongodb)  
+* [Деплой приложения](#деплой-приложения)  
+* [Firewall правило](#firewall-правило)  
+* [Bash-скрипты](#bash-скрипты)  
+* [Startup script](#startup-script)
 
 #### ДЗ №2: Локальное окружение инженера. ChatOps и визуализация рабочих процессов. Командная работа с Git. Работа в GitHub. 
 
@@ -228,3 +238,75 @@ someinternalhost_IP = 10.132.0.4
     ```
  *  После этого в web-интерфейсе pritunl в настройках вводим адрес 35.210.60.203.nip.io в поле Let's Encrypt Domain
   * Проверяем, что браузер больше не ругается на сертификат и что подключение к VPN серверу с локальной машины работает
+
+#### ДЗ №4: Основные сервисы Google Cloud Platform (GCP)
+
+###### Адреса для подключения2:
+```
+testapp_IP = 35.233.102.55
+testapp_port = 9292
+```
+###### Установка и настройка gcloud
+
+**Инструкция**: https://cloud.google.com/sdk/docs/#deb
+
+###### Создание инстанса (gcloud)
+
+```
+$ gcloud compute instances create reddit-app\
+  --boot-disk-size=10GB \
+  --image-family ubuntu-1604-lts \
+  --image-project=ubuntu-os-cloud \
+  --machine-type=g1-small \
+  --tags puma-server \
+  --restart-on-failure
+```
+###### Подключение к инстансу и обновление ruby
+
+```bash
+$ ssh appuser@<instace_public_ip>
+
+$ sudo apt update
+$ sudo apt install -y ruby-full ruby-bundler build-essential
+```
+###### Установка и запуск mongodb
+
+```bash
+$ sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv EA312927
+$ sudo bash -c 'echo "deb http://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/3.2 multiverse" > /etc/apt/sources.list.d/mongodb-org-3.2.list'
+
+$ sudo apt update
+$ sudo apt install -y mongodb-org
+
+$ sudo systemctl start mongod
+$ sudo systemctl enable mongod
+```
+###### Деплой приложения
+```bash
+$ git clone -b monolith https://github.com/express42/reddit.git
+$ cd reddit
+$ bundle install
+$ puma -d
+$ ps aux | grep puma
+```
+###### Firewall правило
+
+В разделе Firewall rules добавлено правило с тегом **puma-server** и tcp портом **9292**
+
+###### Bash-скрипты
+
+Описанные выше шаги добавлены в скрипты: **install_ruby.sh**, **install_mongodb.sh** и **deploy.sh**
+
+###### Startup script
+Все команды объединены в скрипт startup.sh.  
+Для автоматического создания инстанса с задеплоенным приложением выполнить команду:
+```
+$ gcloud compute instances create reddit-app\
+  --boot-disk-size=10GB \
+  --image-family ubuntu-1604-lts \
+  --image-project=ubuntu-os-cloud \
+  --machine-type=g1-small \
+  --tags puma-server \
+  --restart-on-failure \
+  --metadata-from-file startup-script=startup.sh
+```
