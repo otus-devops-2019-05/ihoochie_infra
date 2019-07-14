@@ -26,6 +26,14 @@
 * [Bash-скрипты](#bash-скрипты)  
 * [Startup script](#startup-script)
 
+[ДЗ №5: Модели управления инфраструктурой](#дз-5-модели-управления-инфраструктурой)
+* [Создание Packer template](#создание-packer-template)
+* [Задание со * №1: baked-образ с деплоем приложения](#задание-со-звездочкой-1-baked-образ-с-деплоем-приложения)
+* [Задание со * №2: создание инстанса при помощи gcloud](#задание-со-звездочкой-2-создание-инстанса-при-помощи-gcloud)
+
+
+
+
 #### ДЗ №2: Локальное окружение инженера. ChatOps и визуализация рабочих процессов. Командная работа с Git. Работа в GitHub. 
 
 ###### Создание ветки репозитория:
@@ -310,3 +318,80 @@ $ gcloud compute instances create reddit-app\
   --restart-on-failure \
   --metadata-from-file startup-script=startup.sh
 ```
+
+#### ДЗ №5: Модели управления инфраструктурой
+
+##### Создание Packer template
+
+* Устаноавливаем Packer с https://www.packer.io/downloads.html
+
+* Раздамем права для управления ресурсами GCP -  Application Default Credentials (ADC)
+  ```bash
+  $ gcloud auth application-default login
+  ```
+* Заполняем шаблон ubuntu16.json. Некоторые значения параметризированы при помощи пользоватльских переменных
+
+* Проверяем шаблон 
+  ```bash
+  $ packer validate ./ubuntu16.json 
+  ```
+
+* Запускаем создание образа 
+  ```bash
+  $ packer build -var-file=variables.json ubuntu16.json
+  ```
+
+##### Задание со звездочкой №1: baked-образ с деплоем приложения
+
+* Для деплоя приложения, используя systemd, создан скрипт **scripts/deploy.sh**
+  ```bash
+  !#/bin/bash
+  set -e
+
+  git clone -b monolith https://github.com/express42/reddit.git
+  cd reddit
+  bundle install
+
+  cat > /etc/systemd/system/puma.service <<EOF
+  [Unit]
+  Description=OTUS_puma_app
+  After=network.target
+
+  [Service]
+  Type=simple
+  PIDFile=/home/appuser/reddit/pids/service.pid
+  WorkingDirectory=/home/appuser/reddit
+  ExecStart=/usr/local/bin/puma
+  Restart=always
+
+  [Install]
+  WantedBy=multi-user.target
+  EOF
+
+  systemctl enable puma
+  systemctl start puma
+  ```
+
+* Новый шаблон в **immutable.json**, добавлен provisoner
+  ```json
+  {
+  "type": "shell",
+  "script": "scripts/deploy.sh",
+  "execute_command": "sudo {{.Path}}"
+  }
+  ```
+
+##### Задание со звездочкой №2: создание инстанса при помощи gcloud
+
+* Создаем sh-скрипт **create-redditvm.sh** для создания инстанса с использованием baked-образа
+  ```bash
+  #!/bin/bash
+  set -e
+
+  gcloud compute instances create reddit-app\
+    --image-family reddit-full \
+    --machine-type=g1-small \
+    --tags puma-server \
+    --restart-on-failure
+  ```
+  
