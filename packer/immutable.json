@@ -4,7 +4,6 @@
 	    "source_image_family": null,
 	    "machine_type": "f1-micro"
 	},
-    "sensitive-variables": ["project_id", "source_image_family"],
     "builders": [
         {
             "type": "googlecompute",
