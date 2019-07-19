@@ -395,5 +395,23 @@ $ gcloud compute instances create reddit-app\
     --restart-on-failure
   ```
   
-  ДЗ №6
-  
+ДЗ №6
+
+Основная конфигурация
+
+Создан файл main.tf, в котором определены создаваемые ресурсы: инстанс и правило файрволла
+В outputs.tf определена переменная для удобного вывода внешнего IP созданной VM
+В variables.tf объявлены переменные для параметризации создания ресурсов
+В terraform.tfvars указаны значения переменных
+Добавлены дполнительные переменные для приватного ключа и зоны
+
+
+variable private_key {
+  description = "Path to the privat key uset for ssh access in the provisoners"
+}
+variable {
+  description = "Zone for instance"
+  default = "europe-west1-b"
+}
+
+все конфигурационные файлы отформатированы командой terraform fmt
