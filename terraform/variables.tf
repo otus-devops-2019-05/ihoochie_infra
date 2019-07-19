@@ -25,5 +25,10 @@ variable disk_image {
 }
 
 variable public_key {
-	description = "Public ssh key"
+  description = "Public ssh key"
+}
+
+variable instance_count {
+  description = "Public ssh key"
+  default     = 1
 }
