@@ -395,3 +395,5 @@ $ gcloud compute instances create reddit-app\
     --restart-on-failure
   ```
   
+  ДЗ №6
+  
