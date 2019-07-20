@@ -31,8 +31,10 @@
 * [Задание со * №1: baked-образ с деплоем приложения](#задание-со-звездочкой-1-baked-образ-с-деплоем-приложения)
 * [Задание со * №2: создание инстанса при помощи gcloud](#задание-со-звездочкой-2-создание-инстанса-при-помощи-gcloud)
 
-
-
+[ДЗ №6: Практика Infrastructure as a Code (IaC)](#дз-6-практика-infrastructure-as-a-code-iac)
+* [Основная конфигурация](#основная-конфигурация)
+* [Задание со * ](#задание-cо-звездочкой-добавление-ssh-ключей-для-нескольких-пользователей)
+* [Задание с **](#задание-с-2-звездами-конфигурация-балансировщика-нагрузки)
 
 #### ДЗ №2: Локальное окружение инженера. ChatOps и визуализация рабочих процессов. Командная работа с Git. Работа в GitHub. 
 
@@ -393,5 +395,103 @@ $ gcloud compute instances create reddit-app\
     --machine-type=g1-small \
     --tags puma-server \
     --restart-on-failure
+  ```
+#### ДЗ №6: Практика Infrastructure as a Code (IaC)
+
+##### Основная конфигурация
+* Создан файл main.tf, в котором определены создаваемые ресурсы: инстанс и правило файрволла
+* В outputs.tf определена переменная для удобного вывода внешнего IP созданной VM
+* В variables.tf объявлены переменные для параметризации создания ресурсов
+* В terraform.tfvars указаны значения переменных
+* Добавлены дполнительные переменные для приватного ключа и зоны
+  ```
+  variable private_key {
+      description = "Path to the privat key uset for ssh access in the provisoners"
+  }
+  variable {
+      description = "Zone for instance"
+      default = "europe-west1-b"
+  }
+  ```
+* все конфигурационные файлы отформатированы командой terraform fmt
+
+##### Задание cо звездочкой: добавление ssh ключей для нескольких пользователей
+* Добавление группы ключей
+  ```
+  resource "google_compute_project_metadata" "ssh-key-appuser" {
+    metadata {
+      ssh-keys = <<EOF
+  appuser1:${var.public_key} appuser1
+  appuser2:${var.public_key} appuser2
+  appuser3:${var.public_key} appuser3
+  appuser4:${var.public_key} appuser4
+  appuser5:${var.public_key} appuser5
+  EOF
+    }
+  }
+  ```
+* Вариант с google_compute_project_metadata_item
+  ```
+  resource "google_compute_project_metadata_item" "ssh-key-appuser" {
+    key = "ssh-keys"
+    value = "appuser1:${var.public_key} appuser1\nappuser2:${var.public_key} appuser2\nappuser3:${var.public_key} appuser3"
+  }
+  ```
+* Если добавить новый ключи в интерфейсе, а потом выполнить terraform apply, то ключ будет утерян. Чтобы этого избежать нужно добавлять его в конфигурацию terraform.
+
+##### Задание с 2 звездами: конфигурация балансировщика нагрузки
+* Конфигурация для создания балансировщика добавлена в lb.tf, включая правило firewall для Health чекера
+  ```resource "google_compute_firewall" "fw-allow-health-checks" {
+    name    = "fw-allow-health-checks"
+    network = "default"
+    allow {
+      protocol = "tcp"
+      ports    = ["9292"]
+    }
+    target_tags = ["allow-health-checks"]
+    source_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
+    priority = 1000
+    direction = "INGRESS"
+  }
+  ```
+* Тег назначается создаваемым инстансам. Тег reddit-app больше не нужен, так как доступ к приложение будет происходить через балансировщик.
+  ```
+  tags = ["allow-health-checks"]
+  ```
+* Добавлено второй инстанс в описание конфигурации, из-за чего пришлось првить код в разных местах, что не оптимально и может в будуещм привести к проблемам из-за ошибок.
+* При остановке одного инстанса приложение продолжает быть доступным по адресу балансировщика.
+* В [документации](https://www.terraform.io/docs/configuration-0-11/resources.html) описано использование count для создания нескольких экземпляров ресурса и добавление индекса к имени через count.index. Например, создание группы инстансов (значение count определено в виде переменной):
+  ```
+  variable instance_count {
+      description = "Public ssh key"
+      default = 1
+  }
+  resource "google_compute_instance" "app" {
+    count        = "${var.instance_count}"
+    name         = "reddit-app${count.index}"
+    ...
+    ...
+    }
+    resource "google_compute_instance_group" "reddit-instance-group" {
+    name        = "reddit-instance-group"
+    description = "Reddit instance group"
+    instances = [
+      "${google_compute_instance.app.*.self_link}"
+    ]
+    ...
+    ...
+    }
+    ```
+* Список ip адресов добавлен в output.tf
+  ```  
+  output "all_external_ips" {
+  value = "${google_compute_instance.app.*.network_interface.0.access_config.0.nat_ip}"
+  }
+  output "external_ip_0" {
+    value = "${google_compute_instance.app.0.network_interface.0.access_config.0.nat_ip}"
+  }
+  output "load_balancer_ip" {
+      value = "${google_compute_global_forwarding_rule.reddit-lb-global-forwarding-rule.ip_address}"
+  }
   ```
   
