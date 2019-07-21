@@ -15,6 +15,22 @@ resource "google_compute_instance" "db" {
     access_config = {}
   }
 
+  connection {
+    type        = "ssh"
+    user        = "appuser"
+    agent       = false
+    private_key = "${file(var.private_key)}"
+  }
+
+  provisioner "file" {
+    source      = "${path.module}/files/mongod.conf"
+    destination = "/tmp/mongod.conf"
+  }
+
+  provisioner "remote-exec" {
+    script = "${path.module}/files/bind_ip.sh"
+  }
+
   # metadata {
   #   ssh-keys = "appuser:${file(var.public_key_path)}"
   # }

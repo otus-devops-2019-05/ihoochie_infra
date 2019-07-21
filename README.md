@@ -36,6 +36,11 @@
 * [Задание со * ](#задание-cо-звездочкой-добавление-ssh-ключей-для-нескольких-пользователей)
 * [Задание с **](#задание-с-2-звездами-конфигурация-балансировщика-нагрузки)
 
+[ДЗ №7: Принципы организации инфраструктурного кода и работа над инфраструктурой в команде на примере Terraform](#дз-7-принципы-организации-инфраструктурного-кода-и-работа-над-инфраструктурой-в-команде-на-примере-terraform)
+* [Разделение конфигурации и использование модулей](#разделение-конфигурации-и-использование-модулей)
+* [Задание со * ](#задание-со-звездочкой-хранение-state-файла-в-удаленном-storage-bucket)
+* [Задание с **](#задние-с-двумя-звездами-запуск-приложения-с-бд-на-втором-инстансе)
+
 #### ДЗ №2: Локальное окружение инженера. ChatOps и визуализация рабочих процессов. Командная работа с Git. Работа в GitHub. 
 
 ###### Создание ветки репозитория:
@@ -494,4 +499,183 @@ $ gcloud compute instances create reddit-app\
       value = "${google_compute_global_forwarding_rule.reddit-lb-global-forwarding-rule.ip_address}"
   }
   ```
-  
+#### ДЗ №7: Принципы организации инфраструктурного кода и работа над инфраструктурой в команде на примере Terraform. 
+
+##### Разделение конфигурации и использование модулей
+
+* Добавляем автоматически созданное при создании проекта правило default-allow-ssh в конфигурацию
+  ```
+  resource "google_compute_firewall" "firewall_ssh" {
+    description = "Allow SSH from anywhere"
+    name    = "default-allow-ssh"
+    network = "default"
+
+    allow {
+      protocol = "tcp"
+      ports    = ["22"]
+    }
+
+    source_ranges = ["0.0.0.0/0"]
+  }
+  ```
+  ```
+  $ terraform import google_compute_firewall.firewall_ssh default-allow-ssh
+  ```
+
+
+* Добавляем создание внешнего ip адреса и его использование инстансом
+  ```
+  resource "google_compute_address" "app_ip" {
+  name = "reddit-app-ip"
+  }
+  ```
+  ```
+  ...
+  network_interface {
+  network       = "default"
+      access_config = {
+        nat_ip = "${google_compute_address.app_ip.address}"
+      }
+  }
+  ...
+  ```
+
+* Создаем Packer конфигурацию для создания образа с установленным mongodb - packer/db.json
+* Создаем Packer конфигурацию для создания образа с установленным  Ruby - packer/app.json
+
+* Создаем образы
+  ```
+  $ packer build -var-file=variables.json app.json
+  $ packer build -var-file=variables.json db.json
+  ```
+
+* Разделяем конфигурацию на разные файлы: app.rf, db.tf, vpc.tf
+
+* Создаем модули
+  ```bash
+  $ mkdir modules
+  $ cd modules
+  $ mkdir db
+  $ cd db
+  $ touch main.tf
+  $ touch variables.tf
+  $ touch outputs.tf
+  $ cat ~/ihoochie_infra/terraform/db.tf > ./main.tf
+  $ cd ..
+
+  $ mkdir app
+  $ cd app
+  $ touch main.tf
+  $ touch variables.tf
+  $ touch outputs.tf
+  $ cat ~/ihoochie_infra/terraform/app.tf > ./main.tf
+  ```
+* Из директории terraform удаляем файлы app.tf и db.tf
+* По аналогии создаем модуль vpc.tf
+* Добавляем подключение модулей в основную конфигурацию в terrafom/main.tf
+  ```
+  module "app" {
+    source          = "modules/app"
+    public_key_path = "${var.public_key_path}"
+    zone            = "${var.zone}"
+    app_disk_image  = "${var.app_disk_image}"
+  }
+
+  module "db" {
+    source          = "modules/db"
+    public_key_path = "${var.public_key_path}"
+    zone            = "${var.zone}"
+    db_disk_image   = "${var.db_disk_image}"
+  }
+
+  module "vpc" {
+    source          = "modules/vpc"
+  }
+  ```
+* Подключаем модули
+  ```
+  $ terraform get
+  ```
+
+* В terraform/outputs.tf описываем переменные, ссылаясь на модули.  
+  ```
+  output "db_external_ip" {
+      value = "${module.db.db_external_ip}"
+  }
+  output "app_external_ip" {
+      value = "${module.app.app_external_ip}"
+  }
+  ```
+* Параметризируем source_ranges в модуле vpc  
+* Создадим Stage и Prod
+   ```bash
+    $ mkdir prod
+    $ mkdir stage
+    $ cp main.tf variables.tf outputs.tf terraform.tfvars ./prod
+    $ cp main.tf variables.tf outputs.tf terraform.tfvars ./stage
+   ```
+ 
+##### Задание со звездочкой: хранение state файла в удаленном storage bucket
+* Добаляем storage бакеты - terraform/storage-bucket.tf
+* В директориях stage и prod определяем конфигурацию backend.tf
+
+* Если скопировать конфигруационные файлы в директорию вне репозитория, стостояние инфраструктуры прододжает быть видимым при отсутствии локального state файла.
+
+* При одновременном запуске терраформа из двух директорий, получаем ошибку - система блокировок работает.
+  ```
+  Error: Error locking state: Error acquiring the state lock: writing "gs://reddit-storage-stage/stage/default.tflock" failed: googleapi: Error 412: Precondition Failed, conditionNotMet
+  Lock Info: ...
+
+  Terraform acquires a state lock to protect the state from being written
+  by multiple users at the same time. Please resolve the issue above and try
+  again. For most commands, you can disable locking with the "-lock=false"
+  flag, but this is not recommended.
+  ```
+
+##### Задние с двумя звездами: Запуск приложения с БД на втором инстансе
+
+* Для того, чтобы поднять прилоение с двумя инстансами, нужно, чтобы mongodb был доступен из внутренней сети а приложение puma должно обращаться к внутреннему ip инстанса с mongodb.
+
+* Для открытия доступа к mongodb заменим конфиг /etc/mongod.conf. При помощи провиженеров применим файлы mongod.conf и bind_ip.sh, объявленные в модуле db
+  ```
+    provisioner "file" {
+      source      = "${path.module}/files/mongod.conf"
+      destination = "/tmp/mongod.conf"
+    }
+
+    provisioner "remote-exec" {
+      script = "${path.module}/files/bind_ip.sh"
+    }
+  ```
+* В модуле db объявим output. Она будет использована как input при инициализации модуля
+  ```
+  output "db_internal_ip" {
+    value = "${google_compute_instance.db.network_interface.0.network_ip}"
+  }
+  ```
+* В модуле app объявим переменную
+  ```
+  variable "db_internal_ip" {
+    description = "DB internal ip to connect the app"
+    default = "127.0.0.1"
+  }
+  ```
+* Испоьзуем переменную в определнии ресурса. Здесь мы передаем внутренний ip db инстанса
+  ```
+    provisioner "file" {
+      source      = "${path.module}/files/puma.service"
+      destination = "/tmp/puma.service"
+    }
+
+    provisioner "remote-exec" {
+      inline = "echo 'Environment=DATABASE_URL=${var.db_internal_ip}:27017' >> /tmp/puma.service"
+    }
+
+    provisioner "remote-exec" {
+      script = "${path.module}/files/deploy.sh"
+    }
+  ```
+ * В инициализации модуля в prod/main.tf и stage/main.tf используем переменную.
+    ```
+       db_internal_ip  = "${module.db.db_internal_ip}"
+    ```
