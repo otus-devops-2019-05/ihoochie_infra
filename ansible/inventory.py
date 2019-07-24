@@ -52,7 +52,7 @@ class ExampleInventory(object):
                     }
                 }
     def get_servers_ip(self):
-        with open(os.path.expanduser('~/ihoochie_infra/terraform/stage/terraform.tfstate'), 'r') as file:
+        with open(os.path.expanduser('~/ihoochie_infra/terraform/stage/terraform.tfstate.example'), 'r') as file:
             state = json.load(file)
 
         for module in state['modules']:
