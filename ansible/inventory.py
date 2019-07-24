@@ -16,9 +16,11 @@ class ExampleInventory(object):
         self.inventory = {}
         self.read_cli_args()
 
+        self.appserver, self.dbserver = self.get_servers_ip() # servers ips
+
         
         if self.args.list:                              # Called with `--list`.
-            self.inventory = self.example_inventory()
+            self.inventory = self.get_inventory()
         elif self.args.host:                            # Called with `--host [hostname]`
             self.inventory = self.empty_inventory()     # Not implemented, since we return _meta info `--list`.
         else:
@@ -26,30 +28,40 @@ class ExampleInventory(object):
 
         print json.dumps(self.inventory);
 
-    # Example inventory for testing.
-    def example_inventory(self):
+    # Generate inventory
+    def get_inventory(self):
         return {
                   "app": {
-                    "hosts":["34.77.235.46"]
-                    },
-                  "db": {
-                    "hosts":["35.195.183.166"]
+                        "hosts":["appserver"],
+                        "vars": {
+                        "ansible_host": self.appserver
+                        }
+                        },
+                      "db": {
+                        "hosts":["dbserver"],
+                        "vars": {
+                        "ansible_host": self.dbserver
+                        }
                     }
                 }
 
     # Empty inventory for testing.
     def empty_inventory(self):
         return {'_meta': {
-                        'hostvars': {
-                            "appserver": {
-                            "ansible_host" : "34.77.235.46"
-                            },
-                            "dbserver": {
-                            "ansible_host" : "35.195.183.166"
-                            }
-                        }
+                        'hostvars': {}
+                    }
                 }
-                }
+    def get_servers_ip(self):
+        with open(os.path.expanduser('~/ihoochie_infra/terraform/stage/terraform.tfstate'), 'r') as file:
+            state = json.load(file)
+
+        for module in state['modules']:
+            if module["path"] == ['root']:
+                appserver = module["outputs"]["app_external_ip"]["value"]
+                dbserver = module["outputs"]["db_external_ip"]["value"]
+            else:
+                pass
+        return appserver, dbserver
 
 
     # Read the command line args passed to the script.
