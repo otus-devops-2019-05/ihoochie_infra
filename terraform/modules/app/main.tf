@@ -22,6 +22,7 @@ resource "google_compute_instance" "app" {
   #   ssh-keys = "appuser:${file(var.public_key_path)}"
   # }
 
+  # Установка и запуск приложения
   connection {
     type        = "ssh"
     user        = "appuser"
