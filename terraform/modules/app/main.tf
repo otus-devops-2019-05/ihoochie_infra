@@ -23,6 +23,7 @@ resource "google_compute_instance" "app" {
   # }
 
   # Установка и запуск приложения
+
   # connection {
   #   type        = "ssh"
   #   user        = "appuser"
@@ -39,6 +40,7 @@ resource "google_compute_instance" "app" {
   # provisioner "remote-exec" {
   #   script = "${path.module}/files/deploy.sh"
   # }
+
 }
 
 resource "google_compute_address" "app_ip" {
