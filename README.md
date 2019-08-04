@@ -51,6 +51,13 @@
 * [Несколько плейбуков](#несколько-плейбуков)
 * [Провижининг в Packer](#провижининг-в-packer)
 
+[ДЗ №10 Ansible: работа с ролями и окружениями](#дз-10-ansible-работа-с-ролями-и-окружениями)
+* [Создание ролей](#создание-ролей)
+* [Разделение на окружения](#разделение-на-окружения)
+* [Community роль](#community-роль)
+* [Задание со * ](#задание-со-звездочкой-работа-с-динамическим-инвентори)
+
+
 #### ДЗ №2: Локальное окружение инженера. ChatOps и визуализация рабочих процессов. Командная работа с Git. Работа в GitHub. 
 
 ###### Создание ветки репозитория:
@@ -767,3 +774,99 @@ $ gcloud compute instances create reddit-app\
   $ ansible-playbook site.yml
   ```
 * В браузере проверяем работуп риложения по адресу <app_external_ip>:9292
+
+#### ДЗ №10 Ansible: работа с ролями и окружениями
+
+##### Создание ролей
+
+* Создание структуры ролей
+  ```
+  ansible-galaxy init app
+  ansible-galaxy init db
+  ```
+* Таски из блейбуков перенесены в роли
+  ```
+  ansible/roles/db/tasks/main.yml
+  ```
+* Перенесены шаблоны и файлы
+  ```
+  ansible/roles/db/files/
+  ansible/roles/db/templates/
+  ```
+* Хендлеры
+  ```
+  ansible/roles/db/handlers/main.yml
+  ```
+* Переменные по умолчанию
+  ```
+  ansible/roles/app/defaults/main.yml
+  ```
+
+##### Разделение на окружения
+
+* Окуржения разделены на environtents/prod и environtents/stage
+
+* Окружение по умолчанияю определяется по инвентори в ansible/ansible.cfg
+* Другое окружение применяется через указание инветори в параметре -i
+
+##### Community роль 
+
+* Добавлена community-роль jdauphant.nginx
+  ```
+  $ ansible-galaxy install -r environments/stage/requirements.yml
+  ```
+* В stage/group_vars/app и stage/group_vars/app добавлена переменная
+  ```
+  nginx_sites:
+      default:
+          - listen 80
+          - server_name "reddit"
+          - location / {
+              proxy_pass http://127.0.0.1:порт_приложения;
+            }
+  ```
+* В ansible/playbooks/app.yml добавлен вызов роли jdauphant.nginx
+
+* В модуль terrafomr/modules/app/main.tf добавлено открытие доступа на 80 порт
+  ```
+  resource "google_compute_firewall" "firewall_puma" {
+    name    = "allow-puma-default"
+    network = "default"
+
+    allow {
+      protocol = "tcp"
+
+      ports = ["9292","80"]
+    }
+  ```
+* После применения ansible-palybook приложение доступно на 80 порту
+
+##### Работа с Ansible Vault
+* Добавлен плейбук для создания пользователей ansible/playbooks/users.yml
+* Добавлен vault key для расшифровки зашифрованных файлов ~/.ansible/vault.key
+* Файлы с данным пользователей для разных окружений
+  ```
+    ansible/environments/prod/credentials.yml
+    ansible/environments/stage/credentials.yml
+  ```
+* Шифруем их 
+  ```
+  $ ansible-vault encrypt environments/prod/credentials.yml
+  $ ansible-vault encrypt environments/stage/credentials.yml
+  ```
+* В /etc/ssh/sshd_config на инстансах gce включаем возможность подклчения по паролю
+  ```
+  PasswordAuthentication yes
+  ```
+* Включаем изменения
+  ```
+  $ sudo service ssh restart
+  ```
+
+##### Задание со звездочкой: Работа с динамическим инвентори
+
+* Динамический inventory указан в ansible.cfg (закомментирован)
+  ```
+  ./environments/stage/inventory.py
+  ```
+* Нужные данные берутся из статистики терраформ в описании окружения - terraform.tfstate
