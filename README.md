@@ -57,6 +57,11 @@
 * [Community роль](#community-роль)
 * [Задание со * ](#задание-со-звездочкой-работа-с-динамическим-инвентори)
 
+[ДЗ №11 Разработка и тестирование Ansible ролей и плейбуков](#дз-11-разработка-и-тестирование-ansible-ролей-и-плейбуков)
+* [Локальная разработка с Vagrant](#локальная-разработка-с-vagrant)
+* [Доработка ролей](#доработка-ролей)
+* [Задание со *: reverse proxy](#задание-со-звездочкой-1-reverse-proxy)
+* [Тестирование роли](#тестирование-роли)
 
 #### ДЗ №2: Локальное окружение инженера. ChatOps и визуализация рабочих процессов. Командная работа с Git. Работа в GitHub. 
 
@@ -870,3 +875,124 @@ $ gcloud compute instances create reddit-app\
   ./environments/stage/inventory.py
   ```
 * Нужные данные берутся из статистики терраформ в описании окружения - terraform.tfstate
+
+#### ДЗ №11 Разработка и тестирование Ansible ролей и плейбуков
+
+
+##### Локальная разработка с Vagrant
+
+* Установка virtualbox
+  ```
+  $ wget https://download.virtualbox.org/virtualbox/6.0.10/virtualbox-6.0_6.0.10-132072~Ubuntu~xenial_amd64.deb
+  $ sudo apt install /home/ihoochie/Downloads/virtualbox-6.0_6.0.10-132072_Ubuntu_xenial_amd64.deb
+  ```
+
+* Установка Vagrant
+  ```
+  $ wget https://releases.hashicorp.com/vagrant/2.2.5/vagrant_2.2.5_linux_amd64.zip
+  $ sudo unzip ~/Downloads/vagrant_2.2.5_linux_amd64.zip -d /usr/local/bin
+  ```
+* В файле ansible/Vagrantfile описываем создание виртуальных машин
+
+* Создаем виртуальные машины
+  ```
+  $ vagrant up 
+  ```
+  
+* Проверяем статус виртуальных машин
+  ```
+  $ vagrant status
+  ```
+* Проверяем подключение по ssh до appserver и подключение до dbserver с него
+  ```
+  $ vagrant ssh appserver
+  $ ping -c 2 10.10.10.10 
+  ```
+
+##### Доработка ролей
+
+* Добавляем Ansible провиженинг в Vagrantfile
+
+* Добавляем плейбук ansible/playbooks/base.yml для установки python на виртуальных машинах
+
+* Роли db и app разбиты на отдельные таски
+
+* В роли app параметризировано имя пользователя под которым запускаются скрипты
+
+* Переменная имени пользователя передается в Vagrantfile
+  ```
+  ...
+        ansible.extra_vars = {
+          "deploy_user" => "vagrant"
+  ...
+  ```
+
+##### Задание со звездочкой 1: reverse proxy
+
+* Документация: https://www.vagrantup.com/docs/provisioning/ansible_common.html
+
+* В extra_vars передаем переменную nginx_sites для роли nginx для appserver
+  ```
+          "nginx_sites" => {
+            "default" => [
+              "listen 80",
+              "server_name 'reddit'",
+              "location / { proxy_pass http://127.0.0.1:9292; }"
+              ]
+            }
+  ```
+
+##### Тестирование роли
+
+* Тестируем роль db
+
+* Создание заготовки тестов
+  ```
+  $ molecule init scenario --scenario-name default -r db -d vagrant
+  ```
+* Добавляем тесты в db/molecule/default/tests/test_default.py
+
+* Создание тестовой машины
+  ```
+  $ molecule create
+  ```
+* Запускаем тесты
+  ```
+  $ molecule verify
+  ```
+
+* Тест для роли db, который проверяет, что БД слушает порт 27017
+  ```
+  def test_listening_port(host):
+      socket = host.socket('tcp://127.0.0.1:27017')
+      assert socket.is_listening
+  ```
+
+* В плейбуки packer_db.yml и packer_app.yml добавляем использование ролей db и app соответственно
+
+* В шаблонах packer добавляем использование нужных тасков
+  ```
+      "provisioners": [
+          {
+          "type": "ansible",
+          "playbook_file": "ansible/old/packer_app.yml",
+          "extra_arguments": ["--tags","install_ruby"]
+          }
+        ]
+  ```
+  ```
+      "provisioners": [
+          {
+          "type": "ansible",
+          "playbook_file": "ansible/old/packer_db.yml",
+          "extra_arguments": ["--tags","install_mongo"]
+          }
+      ]
+  ```
+
+* Пересоздаем образы
+```
+$ packer build -var-file=packer/variables.json packer/db.json
+$ packer build -var-file=packer/variables.json packer/app.json
+```
+* Packer отлично видит роли без дополнительных настроек
